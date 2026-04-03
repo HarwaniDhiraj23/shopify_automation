@@ -4,15 +4,20 @@ const path = require("path");
 const source = process.argv[2];
 const targets = process.argv[3].split(",");
 
-// ✅ Only safe, shared files — no wildcards
+// Individual files to sync
 const FILES_TO_SYNC = [
     "sections/header.liquid",
     "sections/footer.liquid"
 ];
 
-// ✅ Handles wildcard-style dirs by scanning the folder
+// Entire directories to sync (all files inside)
 const DIRS_TO_SYNC = [
-    "snippets" // All .liquid files inside will be synced
+    "snippets",  // all .liquid files
+    "assets",
+    "layout",
+    "locales",
+    "sections",
+    "templates"     // ✅ base.css, theme.css, app.js, etc.
 ];
 
 function copyFile(srcRoot, destRoot, relativePath) {
@@ -34,9 +39,7 @@ function syncDir(srcRoot, destRoot, dir) {
     if (!fs.existsSync(srcDir)) return;
 
     fs.readdirSync(srcDir).forEach(file => {
-        if (file.endsWith(".liquid")) {
-            copyFile(srcRoot, destRoot, path.join(dir, file));
-        }
+        copyFile(srcRoot, destRoot, path.join(dir, file)); // ✅ all file types
     });
 }
 
