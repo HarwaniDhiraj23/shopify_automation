@@ -3224,3 +3224,65 @@ details-disclosure>details {
 }
 
 /* dummy css end 03/04/2026*/
+
+/* dummy css start  03/04/2026*/
+/* Scoped wrapper to prevent affecting other elements */
+.dummy-scope {
+  all: initial;
+  font-family: Arial, sans-serif;
+}
+
+/* Apply styles only inside this container */
+.dummy-scope * {
+  box-sizing: border-box;
+}
+
+/* Container */
+.dummy-scope .container {
+  width: 80%;
+  margin: 20px auto;
+  padding: 20px;
+  background: #fff;
+  border-radius: 8px;
+}
+
+/* Header */
+.dummy-scope .header {
+  background: #007BFF;
+  color: white;
+  padding: 15px;
+  text-align: center;
+}
+
+/* Button */
+.dummy-scope .button {
+  display: inline-block;
+  padding: 10px 15px;
+  background: #28a745;
+  color: white;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.dummy-scope .button:hover {
+  background: #218838;
+}
+
+/* Card */
+.dummy-scope .card {
+  border: 1px solid #ddd;
+  padding: 15px;
+  margin-top: 15px;
+  border-radius: 5px;
+}
+
+/* Footer */
+.dummy-scope .footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #777;
+}
+
+
+/* dummy end 2nd time */
