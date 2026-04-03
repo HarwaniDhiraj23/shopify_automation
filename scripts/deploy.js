@@ -27,7 +27,12 @@ storesToDeploy.forEach(store => {
     console.log(`🚀 Deploying ${store}`);
 
     execSync(
-        `shopify theme push --path ./stores/${store} --store ${storeUrl} --password ${token} --allow-live`,
+        `shopify theme push \
+        --path ./stores/${store} \
+        --store ${storeUrl} \
+        --password ${token} \
+        --unpublished \
+        --theme-name "CI-${store}"`,
         { stdio: "inherit" }
     );
 });

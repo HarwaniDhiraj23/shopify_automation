@@ -10,31 +10,44 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v3
+      # 📥 Checkout
+      - name: Checkout Code
+        uses: actions/checkout@v3
 
-      - uses: actions/setup-node@v3
+      # 🟢 Node Setup
+      - name: Setup Node
+        uses: actions/setup-node@v3
         with:
           node-version: 18
 
-      - run: npm install -g @shopify/cli @shopify/theme
+      # 📦 Install Shopify CLI
+      - name: Install Shopify CLI
+        run: npm install -g @shopify/cli @shopify/theme
 
+      # 🔍 Detect Stores
       - name: Detect Stores
         id: detect
         run: |
           STORES=$(node scripts/detect-stores.js)
+          echo "Detected stores: $STORES"
           echo "stores=$STORES" >> $GITHUB_OUTPUT
 
-      - name: Sync (if needed)
+      # 🔁 Sync (if needed)
+      - name: Sync Stores (Safe)
+        if: steps.detect.outputs.stores == 'ALL_SYNC'
         run: |
-          if [ "${{ steps.detect.outputs.stores }}" = "ALL_SYNC" ]; then
-            node scripts/sync.js store-a "$(node -e "console.log(Object.keys(require('./config/stores.json')).join(','))")"
-          fi
+          echo "Running SYNC..."
+          node scripts/sync.js store-a "$(node -e "console.log(Object.keys(require('./config/stores.json')).join(','))")"
 
-      - name: Deploy
-        run: node scripts/deploy.js "${{ steps.detect.outputs.stores }}"
+      # 🚀 Deploy
+      - name: Deploy Stores
+        if: steps.detect.outputs.stores != 'NONE'
+        run: |
+          echo "Deploying: ${{ steps.detect.outputs.stores }}"
+          node scripts/deploy.js "${{ steps.detect.outputs.stores }}"
         env:
           SHOPIFY_STORE_NEW_DEV_STORE: ${{ secrets.SHOPIFY_STORE_NEW_DEV_STORE }}
           SHOPIFY_TOKEN_NEW_DEV_STORE: ${{ secrets.SHOPIFY_TOKEN_NEW_DEV_STORE }}
 
           SHOPIFY_STORE_SHOPIFY_DEV_STORE: ${{ secrets.SHOPIFY_STORE_SHOPIFY_DEV_STORE }}
-          SHOPIFY_TOKEN_SHOPIFY_DEV_STORE: ${{ secrets.SHOPIFY_STORE_SHOPIFY_DEV_STORE }}
+          SHOPIFY_TOKEN_SHOPIFY_DEV_STORE: ${{ secrets.SHOPIFY_TOKEN_SHOPIFY_DEV_STORE }}
