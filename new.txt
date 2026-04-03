@@ -1,0 +1,344 @@
+# 🚀 Shopify Multi-Store Git Automation (Dynamic + Sync Enabled)
+
+## 🎯 Objective
+
+Manage 30+ Shopify stores (independent codebases) with:
+
+* ✅ One Git repository
+* ✅ Automated deployment
+* ✅ Selective / All deployment
+* ✅ Sync changes from one store → others
+* ✅ Dynamic configuration (no hardcoding per store in scripts)
+
+---
+
+# 🏗️ 1. Folder Structure
+
+```
+repo/
+├── stores/
+│   ├── store-a/
+│   ├── store-b/
+│   ├── store-c/
+│
+├── config/
+│   ├── stores.json
+│
+├── scripts/
+│   ├── detect-stores.js
+│   ├── deploy.js
+│   ├── sync.js
+│
+├── .github/workflows/
+│   ├── deploy.yml
+```
+
+---
+
+# ⚙️ 2. Dynamic Store Config
+
+📄 `config/stores.json`
+
+```
+{
+  "store-a": {
+    "envStore": "SHOPIFY_STORE_A",
+    "envToken": "SHOPIFY_TOKEN_A"
+  },
+  "store-b": {
+    "envStore": "SHOPIFY_STORE_B",
+    "envToken": "SHOPIFY_TOKEN_B"
+  }
+}
+```
+
+👉 Add all 30 stores here (no code change needed later)
+
+---
+
+# 🔐 3. GitHub Secrets
+
+Add in GitHub:
+
+```
+SHOPIFY_STORE_A=store-a.myshopify.com
+SHOPIFY_TOKEN_A=shpat_xxx
+
+SHOPIFY_STORE_B=store-b.myshopify.com
+SHOPIFY_TOKEN_B=shpat_xxx
+```
+
+---
+
+# 🧠 4. detect-stores.js
+
+📄 `scripts/detect-stores.js`
+
+```
+const { execSync } = require("child_process");
+
+function getCommitMessage() {
+  return execSync("git log -1 --pretty=%B").toString();
+}
+
+function getChangedFiles() {
+  try {
+    return execSync("git diff --name-only HEAD~1 HEAD")
+      .toString()
+      .split("\n");
+  } catch {
+    return [];
+  }
+}
+
+function extractStoresFromFiles(files) {
+  const stores = new Set();
+
+  files.forEach(file => {
+    const match = file.match(/^stores\/([^/]+)/);
+    if (match) stores.add(match[1]);
+  });
+
+  return Array.from(stores);
+}
+
+function main() {
+  const msg = getCommitMessage();
+
+  // 🔥 Sync Mode
+  if (msg.includes("[ALL_SYNC]")) {
+    console.log("ALL_SYNC");
+    return;
+  }
+
+  // 🔥 Manual selection
+  const match = msg.match(/\[(.*?)\]/);
+  if (match) {
+    console.log(match[1]);
+    return;
+  }
+
+  // 🔥 Auto detect
+  const files = getChangedFiles();
+  const stores = extractStoresFromFiles(files);
+
+  if (stores.length === 0) {
+    console.log("ALL");
+  } else {
+    console.log(stores.join(","));
+  }
+}
+
+main();
+```
+
+---
+
+# 🔁 5. sync.js (SAFE FILE SYNC)
+
+📄 `scripts/sync.js`
+
+```
+const fs = require("fs");
+const path = require("path");
+
+const source = process.argv[2]; // store-a
+const targets = process.argv[3].split(",");
+
+// 🔥 Define syncable files ONLY (SAFE)
+const FILES_TO_SYNC = [
+  "sections/header.liquid",
+  "sections/footer.liquid",
+  "snippets/*.liquid"
+];
+
+function copyFileSafe(srcRoot, destRoot, relativePath) {
+  const srcPath = path.join(srcRoot, relativePath);
+  const destPath = path.join(destRoot, relativePath);
+
+  if (!fs.existsSync(srcPath)) return;
+
+  fs.mkdirSync(path.dirname(destPath), { recursive: true });
+  fs.copyFileSync(srcPath, destPath);
+
+  console.log(`✔ Synced ${relativePath}`);
+}
+
+targets.forEach(store => {
+  if (store === source) return;
+
+  console.log(`🔁 Sync ${source} → ${store}`);
+
+  FILES_TO_SYNC.forEach(file => {
+    copyFileSafe(
+      `./stores/${source}`,
+      `./stores/${store}`,
+      file
+    );
+  });
+});
+```
+
+---
+
+# 🚀 6. deploy.js (Dynamic + Clean)
+
+📄 `scripts/deploy.js`
+
+```
+const { execSync } = require("child_process");
+const storeConfig = require("../config/stores.json");
+
+const input = process.argv[2];
+
+let storesToDeploy = [];
+
+if (input === "ALL") {
+  storesToDeploy = Object.keys(storeConfig);
+} else if (input === "ALL_SYNC") {
+  storesToDeploy = Object.keys(storeConfig);
+} else {
+  storesToDeploy = input.split(",");
+}
+
+storesToDeploy.forEach(store => {
+  const config = storeConfig[store];
+
+  if (!config) {
+    console.log(`❌ Missing config for ${store}`);
+    return;
+  }
+
+  const storeUrl = process.env[config.envStore];
+  const token = process.env[config.envToken];
+
+  console.log(`🚀 Deploying ${store}`);
+
+  execSync(
+    `shopify theme push --path ./stores/${store} --store ${storeUrl} --password ${token} --allow-live`,
+    { stdio: "inherit" }
+  );
+});
+```
+
+---
+
+# ⚙️ 7. GitHub Actions (FINAL)
+
+📄 `.github/workflows/deploy.yml`
+
+```
+name: Deploy Shopify Stores
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - run: npm install -g @shopify/cli @shopify/theme
+
+      - name: Detect Stores
+        id: detect
+        run: |
+          STORES=$(node scripts/detect-stores.js)
+          echo "stores=$STORES" >> $GITHUB_OUTPUT
+
+      - name: Sync (if needed)
+        run: |
+          if [ "${{ steps.detect.outputs.stores }}" = "ALL_SYNC" ]; then
+            node scripts/sync.js store-a "$(node -e "console.log(Object.keys(require('./config/stores.json')).join(','))")"
+          fi
+
+      - name: Deploy
+        run: node scripts/deploy.js "${{ steps.detect.outputs.stores }}"
+        env:
+          SHOPIFY_STORE_A: ${{ secrets.SHOPIFY_STORE_A }}
+          SHOPIFY_TOKEN_A: ${{ secrets.SHOPIFY_TOKEN_A }}
+
+          SHOPIFY_STORE_B: ${{ secrets.SHOPIFY_STORE_B }}
+          SHOPIFY_TOKEN_B: ${{ secrets.SHOPIFY_TOKEN_B }}
+```
+
+---
+
+# 🔁 8. Usage (FINAL LOGIC)
+
+## ✅ Auto Detect
+
+```
+git commit -m "fix header"
+```
+
+👉 Deploy only changed store
+
+---
+
+## ✅ Selected Stores
+
+```
+git commit -m "update UI [store-a,store-c]"
+```
+
+👉 Deploy selected
+
+---
+
+## ✅ Deploy All
+
+```
+git commit -m "global update"
+```
+
+👉 Deploy all
+
+---
+
+## ✅ Sync + Deploy All
+
+```
+git commit -m "sync header [ALL_SYNC]"
+```
+
+👉 Copy safe files + deploy all
+
+---
+
+# ⚠️ 9. Safety Rules
+
+* NEVER sync full store blindly ❌
+* Only sync selected files ✅
+* Always test on 1 store before ALL
+
+---
+
+# 🎉 Final Outcome
+
+You now have:
+
+* ✅ Dynamic config (no hardcoding)
+* ✅ Smart detection
+* ✅ Selective deploy
+* ✅ Sync system
+* ✅ Scalable for 30+ stores
+
+---
+
+# 🚀 Future Enhancements
+
+* Parallel deployments
+* Slack notifications
+* Rollback system
+* UI dashboard
+
+---
