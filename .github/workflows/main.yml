@@ -12,26 +12,28 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 2  # ✅ Needed for git diff HEAD~1 HEAD
+          fetch-depth: 2  # needed for git diff HEAD~1 HEAD
 
       - uses: actions/setup-node@v3
         with:
           node-version: 18
 
-      - run: npm install -g @shopify/cli @shopify/theme
+      - name: Install Shopify CLI
+        run: npm install -g @shopify/cli @shopify/theme
 
       - name: Detect Stores
         id: detect
         run: |
           STORES=$(node scripts/detect-stores.js)
+          echo "Detected: $STORES"
           echo "stores=$STORES" >> $GITHUB_OUTPUT
 
-      - name: Sync (if needed)
+      - name: Sync (ALL_SYNC only)
+        if: steps.detect.outputs.stores == 'ALL_SYNC'
         run: |
-          if [ "${{ steps.detect.outputs.stores }}" = "ALL_SYNC" ]; then
-            ALL_STORES=$(node -e "console.log(Object.keys(require('./config/stores.json')).join(','))")
-            node scripts/sync.js store-a "$ALL_STORES"
-          fi
+          ALL=$(node -e "console.log(Object.keys(require('./config/stores.json')).join(','))")
+          FIRST=$(node -e "console.log(Object.keys(require('./config/stores.json'))[0])")
+          node scripts/sync.js "$FIRST" "$ALL"
 
       - name: Deploy
         run: node scripts/deploy.js "${{ steps.detect.outputs.stores }}"
