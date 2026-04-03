@@ -11,7 +11,6 @@ if (!input) {
     process.exit(1);
 }
 
-// ✅ Resolve which stores to deploy
 let storesToDeploy = [];
 
 if (input === "ALL" || input === "ALL_SYNC") {
@@ -23,7 +22,7 @@ if (input === "ALL" || input === "ALL_SYNC") {
 console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 // ─────────────────────────────────────────────
-// SYNC SHARED FILES (source → all other targets)
+// SYNC
 // ─────────────────────────────────────────────
 
 const FILES_TO_SYNC = [
@@ -35,7 +34,6 @@ const FILES_TO_SYNC = [
 ];
 
 const DIRS_TO_SYNC = [
-    "snippets",  // all .liquid files
     "assets",
     "layout",
     "locales",
@@ -60,7 +58,16 @@ function syncDir(srcRoot, destRoot, dir) {
 
     fs.readdirSync(srcDir).forEach(file => {
         if (file.startsWith(".")) return;
-        copyFile(srcRoot, destRoot, path.join(dir, file));
+
+        const relativePath = path.join(dir, file);
+        const fullSrcPath = path.join(srcRoot, relativePath);
+
+        // ✅ Recurse into subdirectories instead of trying to copy them
+        if (fs.statSync(fullSrcPath).isDirectory()) {
+            syncDir(srcRoot, destRoot, relativePath);
+        } else {
+            copyFile(srcRoot, destRoot, relativePath);
+        }
     });
 }
 
@@ -129,7 +136,5 @@ function deployStore(store) {
 // ─────────────────────────────────────────────
 
 syncBetweenStores(storesToDeploy);
-
 storesToDeploy.forEach(store => deployStore(store));
-
 console.log("\n🎉 All deployments complete!");

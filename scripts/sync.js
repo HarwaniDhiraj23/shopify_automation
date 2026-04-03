@@ -4,7 +4,6 @@ const path = require("path");
 const source = process.argv[2];
 const targets = process.argv[3].split(",").filter(t => t !== source);
 
-// ✅ Individual shared files to sync
 const FILES_TO_SYNC = [
     "sections/header.liquid",
     "sections/footer.liquid",
@@ -13,9 +12,7 @@ const FILES_TO_SYNC = [
     "layout/theme.liquid"
 ];
 
-// ✅ Entire directories to sync (all files inside)
 const DIRS_TO_SYNC = [
-    "snippets",  // all .liquid files
     "assets",
     "layout",
     "locales",
@@ -39,16 +36,20 @@ function copyFile(srcRoot, destRoot, relativePath) {
 
 function syncDir(srcRoot, destRoot, dir) {
     const srcDir = path.join(srcRoot, dir);
-
-    if (!fs.existsSync(srcDir)) {
-        console.warn(`⚠️  Directory not found: ${dir}`);
-        return;
-    }
+    if (!fs.existsSync(srcDir)) return;
 
     fs.readdirSync(srcDir).forEach(file => {
-        // Skip hidden/system files
         if (file.startsWith(".")) return;
-        copyFile(srcRoot, destRoot, path.join(dir, file));
+
+        const relativePath = path.join(dir, file);
+        const fullSrcPath = path.join(srcRoot, relativePath);
+
+        // ✅ Recurse into subdirectories
+        if (fs.statSync(fullSrcPath).isDirectory()) {
+            syncDir(srcRoot, destRoot, relativePath);
+        } else {
+            copyFile(srcRoot, destRoot, relativePath);
+        }
     });
 }
 
