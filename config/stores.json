@@ -1,10 +1,12 @@
 {
     "new-dev-store": {
         "envStore": "SHOPIFY_STORE_NEW_DEV_STORE",
-        "envToken": "SHOPIFY_TOKEN_NEW_DEV_STORE"
+        "envToken": "SHOPIFY_TOKEN_NEW_DEV_STORE",
+        "envTheme": "SHOPIFY_THEME_NEW_DEV_STORE"
     },
     "shopify-dev-store": {
         "envStore": "SHOPIFY_STORE_SHOPIFY_DEV_STORE",
-        "envToken": "SHOPIFY_TOKEN_SHOPIFY_DEV_STORE"
+        "envToken": "SHOPIFY_TOKEN_SHOPIFY_DEV_STORE",
+        "envTheme": "SHOPIFY_THEME_SHOPIFY_DEV_STORE"
     }
 }
