@@ -1,6 +1,6 @@
 # 🚀 Shopify Multi-Store Git Automation
 
-Manage 30+ Shopify stores from one Git repository with automated deployment, selective store targeting, and cross-store file sync.
+Manage 15+ Shopify stores from one Git repository with automated deployment, selective store targeting, and cross-store file sync.
 
 ---
 
@@ -507,6 +507,18 @@ SHOPIFY_THEME_NEW = 123456789
 SHOPIFY_STORE_NEW: ${{ secrets.SHOPIFY_STORE_NEW }}
 SHOPIFY_TOKEN_NEW: ${{ secrets.SHOPIFY_TOKEN_NEW }}
 SHOPIFY_THEME_NEW: ${{ secrets.SHOPIFY_THEME_NEW }}
+```
+
+5. Shopify Access Token:
+Ensure that the following scopes are enabled for your Shopify access token:
+- `write_themes`
+- `read_themes`
+- `write_theme_code`
+
+6. Shopify Theme ID
+To get your Shopify theme ID, run the following command:
+```bash
+shopify theme list --store your-store.myshopify.com
 ```
 
 That's it — no script changes needed.

@@ -8,5 +8,20 @@
         "envStore": "SHOPIFY_STORE_SHOPIFY_DEV_STORE",
         "envToken": "SHOPIFY_TOKEN_SHOPIFY_DEV_STORE",
         "envTheme": "SHOPIFY_THEME_SHOPIFY_DEV_STORE"
+    },
+    "pixelCart": {
+        "envStore": "SHOPIFY_STORE_PIXELCART",
+        "envToken": "SHOPIFY_TOKEN_PIXELCART",
+        "envTheme": "SHOPIFY_THEME_PIXELCART"
+    },
+    "devNest": {
+        "envStore": "SHOPIFY_STORE_DEVNEST",
+        "envToken": "SHOPIFY_TOKEN_DEVNEST",
+        "envTheme": "SHOPIFY_THEME_DEVNEST"
+    },
+    "codeCart-lab": {
+        "envStore": "SHOPIFY_STORE_CODECART_LAB",
+        "envToken": "SHOPIFY_TOKEN_CODECART_LAB",
+        "envTheme": "SHOPIFY_THEME_CODECART_LAB"
     }
 }
