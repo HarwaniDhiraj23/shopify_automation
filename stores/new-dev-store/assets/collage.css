@@ -207,3 +207,14 @@
 }
 
 /* new dummy css end */
+
+/* new dummy css start 1*/
+
+.dummy-scope .footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #777;
+}
+
+/* new dummy css end 1*/
