@@ -5,7 +5,6 @@ const { execSync } = require("child_process");
 const source = process.argv[2];
 const targets = process.argv[3] ? process.argv[3].split(",").filter(t => t !== source) : [];
 
-// Watched dirs — only changed files inside these get synced
 const WATCHED_DIRS = [
     "assets",
     "layout",
@@ -38,53 +37,72 @@ function copyFile(srcRoot, destRoot, relativePath) {
     console.log(`✔  Synced: ${relativePath}`);
 }
 
-// ✅ Get only files changed in the current commit, scoped to source store
-function getChangedFilesInCommit(storeSource) {
-    try {
-        const raw = execSync("git diff --name-only HEAD~1 HEAD")
-            .toString()
-            .trim()
-            .split("\n")
-            .filter(Boolean);
+function getAllFiles(dirPath, baseDir = dirPath, fileList = []) {
+    if (!fs.existsSync(dirPath)) return fileList;
 
-        // e.g. stores/store-a/assets/base.css → assets/base.css
-        const prefix = `stores/${storeSource}/`;
-        return raw
-            .filter(f => f.startsWith(prefix))
-            .map(f => f.replace(prefix, ""));
-    } catch {
-        console.warn("⚠️  Could not diff commits — no files will be synced.");
-        return [];
-    }
+    fs.readdirSync(dirPath).forEach(file => {
+        if (file.startsWith(".")) return;
+
+        const fullPath = path.join(dirPath, file);
+        const relativePath = path.relative(baseDir, fullPath);
+
+        if (fs.statSync(fullPath).isDirectory()) {
+            getAllFiles(fullPath, baseDir, fileList);
+        } else {
+            fileList.push(relativePath);
+        }
+    });
+
+    return fileList;
 }
 
-// ✅ Keep only files inside WATCHED_DIRS
-function filterWatchedChanges(changedFiles) {
-    return changedFiles.filter(f =>
-        WATCHED_DIRS.some(dir => f.startsWith(dir + "/") || f === dir)
-    );
+// ✅ Only sync files that are missing or different in target
+function getDiffFiles(srcRoot, destRoot) {
+    const diffFiles = [];
+
+    WATCHED_DIRS.forEach(dir => {
+        const srcDir = path.join(srcRoot, dir);
+        if (!fs.existsSync(srcDir)) return;
+
+        const allFiles = getAllFiles(srcDir, srcRoot);
+
+        allFiles.forEach(relativePath => {
+            const srcPath = path.join(srcRoot, relativePath);
+            const destPath = path.join(destRoot, relativePath);
+
+            if (!fs.existsSync(destPath)) {
+                diffFiles.push(relativePath);
+                return;
+            }
+
+            const srcHash = execSync(`git hash-object "${srcPath}"`).toString().trim();
+            const destHash = execSync(`git hash-object "${destPath}"`).toString().trim();
+
+            if (srcHash !== destHash) {
+                diffFiles.push(relativePath);
+            }
+        });
+    });
+
+    return diffFiles;
 }
-
-// ─────────────────────────────────────────────
-// RUN
-// ─────────────────────────────────────────────
-
-const changedFiles = getChangedFilesInCommit(source);
-const filesToSync = filterWatchedChanges(changedFiles);
-
-if (filesToSync.length === 0) {
-    console.log("ℹ️  No watched files changed in this commit — nothing to sync.");
-    process.exit(0);
-}
-
-console.log(`\n📝 Files changed in this commit (from ${source}):`);
-filesToSync.forEach(f => console.log(`   - ${f}`));
 
 targets.forEach(target => {
-    console.log(`\n🔁 Syncing: ${source} → ${target}`);
+    const srcRoot = `./stores/${source}`;
+    const destRoot = `./stores/${target}`;
+
+    const filesToSync = getDiffFiles(srcRoot, destRoot);
+
+    if (filesToSync.length === 0) {
+        console.log(`\n   → ${target}: already up to date ✅`);
+        return;
+    }
+
+    console.log(`\n🔁 Syncing: ${source} → ${target} (${filesToSync.length} file(s)):`);
+    filesToSync.forEach(f => console.log(`   - ${f}`));
 
     filesToSync.forEach(file =>
-        copyFile(`./stores/${source}`, `./stores/${target}`, file)
+        copyFile(srcRoot, destRoot, file)
     );
 
     console.log(`✅ Done: ${source} → ${target}`);

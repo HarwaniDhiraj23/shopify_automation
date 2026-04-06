@@ -22,10 +22,9 @@ if (input === "ALL" || input === "ALL_SYNC") {
 console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 // ─────────────────────────────────────────────
-// SYNC — only files changed in current commit
+// SYNC — diff source vs target on disk
 // ─────────────────────────────────────────────
 
-// These dirs are watched — only changed files inside them get synced
 const WATCHED_DIRS = [
     "assets",
     "layout",
@@ -45,31 +44,58 @@ function copyFile(srcRoot, destRoot, relativePath) {
     console.log(`✔  Synced: ${relativePath}`);
 }
 
-// ✅ Get ONLY files changed in the current commit, scoped to source store
-function getChangedFilesInCommit(storeSource) {
-    try {
-        const raw = execSync("git diff --name-only HEAD~1 HEAD")
-            .toString()
-            .trim()
-            .split("\n")
-            .filter(Boolean);
+// ✅ Recursively get all files in a directory
+function getAllFiles(dirPath, baseDir = dirPath, fileList = []) {
+    if (!fs.existsSync(dirPath)) return fileList;
 
-        // e.g. stores/store-a/assets/base.css → assets/base.css
-        const prefix = `stores/${storeSource}/`;
-        return raw
-            .filter(f => f.startsWith(prefix))
-            .map(f => f.replace(prefix, ""));
-    } catch {
-        console.warn("⚠️  Could not diff commits — no files will be synced.");
-        return [];
-    }
+    fs.readdirSync(dirPath).forEach(file => {
+        if (file.startsWith(".")) return;
+
+        const fullPath = path.join(dirPath, file);
+        const relativePath = path.relative(baseDir, fullPath);
+
+        if (fs.statSync(fullPath).isDirectory()) {
+            getAllFiles(fullPath, baseDir, fileList);
+        } else {
+            fileList.push(relativePath);
+        }
+    });
+
+    return fileList;
 }
 
-// ✅ Keep only files that live inside WATCHED_DIRS
-function filterWatchedChanges(changedFiles) {
-    return changedFiles.filter(f =>
-        WATCHED_DIRS.some(dir => f.startsWith(dir + "/") || f === dir)
-    );
+// ✅ Get files that are different between source and target
+// Compares file contents using git hash-object — fast and accurate
+function getDiffFiles(srcRoot, destRoot) {
+    const diffFiles = [];
+
+    WATCHED_DIRS.forEach(dir => {
+        const srcDir = path.join(srcRoot, dir);
+        if (!fs.existsSync(srcDir)) return;
+
+        const allFiles = getAllFiles(srcDir, srcRoot);
+
+        allFiles.forEach(relativePath => {
+            const srcPath = path.join(srcRoot, relativePath);
+            const destPath = path.join(destRoot, relativePath);
+
+            // If file doesn't exist in target → needs sync
+            if (!fs.existsSync(destPath)) {
+                diffFiles.push(relativePath);
+                return;
+            }
+
+            // If file content differs → needs sync
+            const srcHash = execSync(`git hash-object "${srcPath}"`).toString().trim();
+            const destHash = execSync(`git hash-object "${destPath}"`).toString().trim();
+
+            if (srcHash !== destHash) {
+                diffFiles.push(relativePath);
+            }
+        });
+    });
+
+    return diffFiles;
 }
 
 function syncBetweenStores(stores) {
@@ -80,25 +106,24 @@ function syncBetweenStores(stores) {
 
     const source = stores[0];
     const targets = stores.slice(1);
+    const srcRoot = `./stores/${source}`;
 
-    // ✅ Build sync list from current commit only
-    const changedFiles = getChangedFilesInCommit(source);
-    const filesToSync = filterWatchedChanges(changedFiles);
-
-    if (filesToSync.length === 0) {
-        console.log("ℹ️  No watched files changed in this commit — skipping sync.");
-        return;
-    }
-
-    console.log(`\n📝 Files changed in this commit (from ${source}):`);
-    filesToSync.forEach(f => console.log(`   - ${f}`));
-
-    console.log(`\n🔁 Syncing to: ${targets.join(", ")}`);
+    console.log(`\n🔁 Syncing: ${source} → ${targets.join(", ")}`);
 
     targets.forEach(target => {
-        console.log(`\n   → ${target}`);
+        const destRoot = `./stores/${target}`;
+        const filesToSync = getDiffFiles(srcRoot, destRoot);
+
+        if (filesToSync.length === 0) {
+            console.log(`\n   → ${target}: already up to date ✅`);
+            return;
+        }
+
+        console.log(`\n   → ${target} (${filesToSync.length} file(s) to sync):`);
+        filesToSync.forEach(f => console.log(`      - ${f}`));
+
         filesToSync.forEach(file =>
-            copyFile(`./stores/${source}`, `./stores/${target}`, file)
+            copyFile(srcRoot, destRoot, file)
         );
     });
 
