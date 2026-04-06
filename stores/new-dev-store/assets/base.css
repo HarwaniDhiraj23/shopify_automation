@@ -3301,7 +3301,7 @@ details-disclosure>details {
 
 /* new dummy css end */
 
-/* new dummy css start 1*/
+/* new dummy css start 3*/
 
 .dummy-scope .footer {
   text-align: center;
@@ -3310,4 +3310,15 @@ details-disclosure>details {
   color: #777;
 }
 
-/* new dummy css end 1*/
+/* new dummy css end 3*/
+
+/* new dummy css start 2*/
+
+.dummy-scope .footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #777;
+}
+
+/* new dummy css end 2*/
