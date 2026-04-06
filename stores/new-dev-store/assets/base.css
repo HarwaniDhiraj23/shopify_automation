@@ -3288,3 +3288,15 @@ details-disclosure>details {
 /* dummy end 3rd time */
 /* dummy end 4th time */
 /* dummy end 5th time */
+
+
+/* new dummy css start */
+
+.dummy-scope .footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #777;
+}
+
+/* new dummy css end */
