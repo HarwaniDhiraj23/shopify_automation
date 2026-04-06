@@ -22,23 +22,16 @@ if (input === "ALL" || input === "ALL_SYNC") {
 console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 // ─────────────────────────────────────────────
-// SYNC
+// SYNC — only files changed in current commit
 // ─────────────────────────────────────────────
 
-const FILES_TO_SYNC = [
-    "sections/header.liquid",
-    "sections/footer.liquid",
-    "config/settings_schema.json",
-    "config/settings_data.json",
-    "layout/theme.liquid"
-];
-
-const DIRS_TO_SYNC = [
+// These dirs are watched — only changed files inside them get synced
+const WATCHED_DIRS = [
     "assets",
     "layout",
     "locales",
     "sections",
-    "templates"     // ✅ base.css, theme.css, app.js, etc.
+    "templates"
 ];
 
 function copyFile(srcRoot, destRoot, relativePath) {
@@ -52,23 +45,31 @@ function copyFile(srcRoot, destRoot, relativePath) {
     console.log(`✔  Synced: ${relativePath}`);
 }
 
-function syncDir(srcRoot, destRoot, dir) {
-    const srcDir = path.join(srcRoot, dir);
-    if (!fs.existsSync(srcDir)) return;
+// ✅ Get ONLY files changed in the current commit, scoped to source store
+function getChangedFilesInCommit(storeSource) {
+    try {
+        const raw = execSync("git diff --name-only HEAD~1 HEAD")
+            .toString()
+            .trim()
+            .split("\n")
+            .filter(Boolean);
 
-    fs.readdirSync(srcDir).forEach(file => {
-        if (file.startsWith(".")) return;
+        // e.g. stores/store-a/assets/base.css → assets/base.css
+        const prefix = `stores/${storeSource}/`;
+        return raw
+            .filter(f => f.startsWith(prefix))
+            .map(f => f.replace(prefix, ""));
+    } catch {
+        console.warn("⚠️  Could not diff commits — no files will be synced.");
+        return [];
+    }
+}
 
-        const relativePath = path.join(dir, file);
-        const fullSrcPath = path.join(srcRoot, relativePath);
-
-        // ✅ Recurse into subdirectories instead of trying to copy them
-        if (fs.statSync(fullSrcPath).isDirectory()) {
-            syncDir(srcRoot, destRoot, relativePath);
-        } else {
-            copyFile(srcRoot, destRoot, relativePath);
-        }
-    });
+// ✅ Keep only files that live inside WATCHED_DIRS
+function filterWatchedChanges(changedFiles) {
+    return changedFiles.filter(f =>
+        WATCHED_DIRS.some(dir => f.startsWith(dir + "/") || f === dir)
+    );
 }
 
 function syncBetweenStores(stores) {
@@ -80,17 +81,24 @@ function syncBetweenStores(stores) {
     const source = stores[0];
     const targets = stores.slice(1);
 
-    console.log(`\n🔁 Syncing shared files: ${source} → ${targets.join(", ")}`);
+    // ✅ Build sync list from current commit only
+    const changedFiles = getChangedFilesInCommit(source);
+    const filesToSync = filterWatchedChanges(changedFiles);
+
+    if (filesToSync.length === 0) {
+        console.log("ℹ️  No watched files changed in this commit — skipping sync.");
+        return;
+    }
+
+    console.log(`\n📝 Files changed in this commit (from ${source}):`);
+    filesToSync.forEach(f => console.log(`   - ${f}`));
+
+    console.log(`\n🔁 Syncing to: ${targets.join(", ")}`);
 
     targets.forEach(target => {
         console.log(`\n   → ${target}`);
-
-        FILES_TO_SYNC.forEach(file =>
+        filesToSync.forEach(file =>
             copyFile(`./stores/${source}`, `./stores/${target}`, file)
-        );
-
-        DIRS_TO_SYNC.forEach(dir =>
-            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
         );
     });
 
