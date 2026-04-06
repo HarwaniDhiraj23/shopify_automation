@@ -1,27 +1,24 @@
 const fs = require("fs");
 const path = require("path");
-const { execSync } = require("child_process");
 
 const source = process.argv[2];
-const targets = process.argv[3] ? process.argv[3].split(",").filter(t => t !== source) : [];
+const targets = process.argv[3].split(",").filter(t => t !== source);
 
-const WATCHED_DIRS = [
+const FILES_TO_SYNC = [
+    "sections/header.liquid",
+    "sections/footer.liquid",
+    "config/settings_schema.json",
+    "config/settings_data.json",
+    "layout/theme.liquid"
+];
+
+const DIRS_TO_SYNC = [
     "assets",
     "layout",
     "locales",
     "sections",
-    "templates"
+    "templates"     // ✅ base.css, theme.css, app.js, etc.
 ];
-
-if (!source || !process.argv[3]) {
-    console.error("❌ Usage: node sync.js <source-store> <target1,target2>");
-    process.exit(1);
-}
-
-if (targets.length === 0) {
-    console.log("⚠️  No targets to sync.");
-    process.exit(0);
-}
 
 function copyFile(srcRoot, destRoot, relativePath) {
     const srcPath = path.join(srcRoot, relativePath);
@@ -37,72 +34,44 @@ function copyFile(srcRoot, destRoot, relativePath) {
     console.log(`✔  Synced: ${relativePath}`);
 }
 
-function getAllFiles(dirPath, baseDir = dirPath, fileList = []) {
-    if (!fs.existsSync(dirPath)) return fileList;
+function syncDir(srcRoot, destRoot, dir) {
+    const srcDir = path.join(srcRoot, dir);
+    if (!fs.existsSync(srcDir)) return;
 
-    fs.readdirSync(dirPath).forEach(file => {
+    fs.readdirSync(srcDir).forEach(file => {
         if (file.startsWith(".")) return;
 
-        const fullPath = path.join(dirPath, file);
-        const relativePath = path.relative(baseDir, fullPath);
+        const relativePath = path.join(dir, file);
+        const fullSrcPath = path.join(srcRoot, relativePath);
 
-        if (fs.statSync(fullPath).isDirectory()) {
-            getAllFiles(fullPath, baseDir, fileList);
+        // ✅ Recurse into subdirectories
+        if (fs.statSync(fullSrcPath).isDirectory()) {
+            syncDir(srcRoot, destRoot, relativePath);
         } else {
-            fileList.push(relativePath);
+            copyFile(srcRoot, destRoot, relativePath);
         }
     });
-
-    return fileList;
 }
 
-// ✅ Only sync files that are missing or different in target
-function getDiffFiles(srcRoot, destRoot) {
-    const diffFiles = [];
+if (!source || !process.argv[3]) {
+    console.error("❌ Usage: node sync.js <source-store> <target1,target2>");
+    process.exit(1);
+}
 
-    WATCHED_DIRS.forEach(dir => {
-        const srcDir = path.join(srcRoot, dir);
-        if (!fs.existsSync(srcDir)) return;
-
-        const allFiles = getAllFiles(srcDir, srcRoot);
-
-        allFiles.forEach(relativePath => {
-            const srcPath = path.join(srcRoot, relativePath);
-            const destPath = path.join(destRoot, relativePath);
-
-            if (!fs.existsSync(destPath)) {
-                diffFiles.push(relativePath);
-                return;
-            }
-
-            const srcHash = execSync(`git hash-object "${srcPath}"`).toString().trim();
-            const destHash = execSync(`git hash-object "${destPath}"`).toString().trim();
-
-            if (srcHash !== destHash) {
-                diffFiles.push(relativePath);
-            }
-        });
-    });
-
-    return diffFiles;
+if (targets.length === 0) {
+    console.log("⚠️  No targets to sync.");
+    process.exit(0);
 }
 
 targets.forEach(target => {
-    const srcRoot = `./stores/${source}`;
-    const destRoot = `./stores/${target}`;
+    console.log(`\n🔁 Syncing: ${source} → ${target}`);
 
-    const filesToSync = getDiffFiles(srcRoot, destRoot);
+    FILES_TO_SYNC.forEach(file =>
+        copyFile(`./stores/${source}`, `./stores/${target}`, file)
+    );
 
-    if (filesToSync.length === 0) {
-        console.log(`\n   → ${target}: already up to date ✅`);
-        return;
-    }
-
-    console.log(`\n🔁 Syncing: ${source} → ${target} (${filesToSync.length} file(s)):`);
-    filesToSync.forEach(f => console.log(`   - ${f}`));
-
-    filesToSync.forEach(file =>
-        copyFile(srcRoot, destRoot, file)
+    DIRS_TO_SYNC.forEach(dir =>
+        syncDir(`./stores/${source}`, `./stores/${target}`, dir)
     );
 
     console.log(`✅ Done: ${source} → ${target}`);

@@ -22,15 +22,23 @@ if (input === "ALL" || input === "ALL_SYNC") {
 console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 // ─────────────────────────────────────────────
-// SYNC — diff source vs target on disk
+// SYNC
 // ─────────────────────────────────────────────
 
-const WATCHED_DIRS = [
+const FILES_TO_SYNC = [
+    "sections/header.liquid",
+    "sections/footer.liquid",
+    "config/settings_schema.json",
+    "config/settings_data.json",
+    "layout/theme.liquid"
+];
+
+const DIRS_TO_SYNC = [
     "assets",
     "layout",
     "locales",
     "sections",
-    "templates"
+    "templates"     // ✅ base.css, theme.css, app.js, etc.
 ];
 
 function copyFile(srcRoot, destRoot, relativePath) {
@@ -44,58 +52,23 @@ function copyFile(srcRoot, destRoot, relativePath) {
     console.log(`✔  Synced: ${relativePath}`);
 }
 
-// ✅ Recursively get all files in a directory
-function getAllFiles(dirPath, baseDir = dirPath, fileList = []) {
-    if (!fs.existsSync(dirPath)) return fileList;
+function syncDir(srcRoot, destRoot, dir) {
+    const srcDir = path.join(srcRoot, dir);
+    if (!fs.existsSync(srcDir)) return;
 
-    fs.readdirSync(dirPath).forEach(file => {
+    fs.readdirSync(srcDir).forEach(file => {
         if (file.startsWith(".")) return;
 
-        const fullPath = path.join(dirPath, file);
-        const relativePath = path.relative(baseDir, fullPath);
+        const relativePath = path.join(dir, file);
+        const fullSrcPath = path.join(srcRoot, relativePath);
 
-        if (fs.statSync(fullPath).isDirectory()) {
-            getAllFiles(fullPath, baseDir, fileList);
+        // ✅ Recurse into subdirectories instead of trying to copy them
+        if (fs.statSync(fullSrcPath).isDirectory()) {
+            syncDir(srcRoot, destRoot, relativePath);
         } else {
-            fileList.push(relativePath);
+            copyFile(srcRoot, destRoot, relativePath);
         }
     });
-
-    return fileList;
-}
-
-// ✅ Get files that are different between source and target
-// Compares file contents using git hash-object — fast and accurate
-function getDiffFiles(srcRoot, destRoot) {
-    const diffFiles = [];
-
-    WATCHED_DIRS.forEach(dir => {
-        const srcDir = path.join(srcRoot, dir);
-        if (!fs.existsSync(srcDir)) return;
-
-        const allFiles = getAllFiles(srcDir, srcRoot);
-
-        allFiles.forEach(relativePath => {
-            const srcPath = path.join(srcRoot, relativePath);
-            const destPath = path.join(destRoot, relativePath);
-
-            // If file doesn't exist in target → needs sync
-            if (!fs.existsSync(destPath)) {
-                diffFiles.push(relativePath);
-                return;
-            }
-
-            // If file content differs → needs sync
-            const srcHash = execSync(`git hash-object "${srcPath}"`).toString().trim();
-            const destHash = execSync(`git hash-object "${destPath}"`).toString().trim();
-
-            if (srcHash !== destHash) {
-                diffFiles.push(relativePath);
-            }
-        });
-    });
-
-    return diffFiles;
 }
 
 function syncBetweenStores(stores) {
@@ -106,24 +79,18 @@ function syncBetweenStores(stores) {
 
     const source = stores[0];
     const targets = stores.slice(1);
-    const srcRoot = `./stores/${source}`;
 
-    console.log(`\n🔁 Syncing: ${source} → ${targets.join(", ")}`);
+    console.log(`\n🔁 Syncing shared files: ${source} → ${targets.join(", ")}`);
 
     targets.forEach(target => {
-        const destRoot = `./stores/${target}`;
-        const filesToSync = getDiffFiles(srcRoot, destRoot);
+        console.log(`\n   → ${target}`);
 
-        if (filesToSync.length === 0) {
-            console.log(`\n   → ${target}: already up to date ✅`);
-            return;
-        }
+        FILES_TO_SYNC.forEach(file =>
+            copyFile(`./stores/${source}`, `./stores/${target}`, file)
+        );
 
-        console.log(`\n   → ${target} (${filesToSync.length} file(s) to sync):`);
-        filesToSync.forEach(f => console.log(`      - ${f}`));
-
-        filesToSync.forEach(file =>
-            copyFile(srcRoot, destRoot, file)
+        DIRS_TO_SYNC.forEach(dir =>
+            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
         );
     });
 
