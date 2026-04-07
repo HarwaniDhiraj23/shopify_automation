@@ -12,7 +12,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          fetch-depth: 2  # needed for git diff HEAD~1 HEAD
+          fetch-depth: 2
 
       - uses: actions/setup-node@v3
         with:
@@ -28,12 +28,15 @@ jobs:
           echo "Detected: $STORES"
           echo "stores=$STORES" >> $GITHUB_OUTPUT
 
-      - name: Sync (ALL_SYNC only)
-        if: steps.detect.outputs.stores == 'ALL_SYNC'
+      - name: Sync (ONLY changed files)
+        if: contains(steps.detect.outputs.stores, 'ALL_SYNC')
         run: |
+          RAW="${{ steps.detect.outputs.stores }}"
+          SOURCE=$(echo $RAW | cut -d':' -f2)
+
           ALL=$(node -e "console.log(Object.keys(require('./config/stores.json')).join(','))")
-          FIRST=$(node -e "console.log(Object.keys(require('./config/stores.json'))[0])")
-          node scripts/sync.js "$FIRST" "$ALL"
+
+          node scripts/sync.js "$SOURCE" "$ALL"
 
       - name: Deploy
         run: node scripts/deploy.js "${{ steps.detect.outputs.stores }}"

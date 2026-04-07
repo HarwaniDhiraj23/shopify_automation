@@ -13,7 +13,11 @@ if (!input) {
 
 let storesToDeploy = [];
 
-if (input === "ALL" || input === "ALL_SYNC") {
+if (input.startsWith("ALL_SYNC")) {
+    const source = input.split(":")[1];
+    storesToDeploy = Object.keys(storeConfig);
+    console.log(`🔁 ALL_SYNC triggered from source: ${source}`);
+} else if (input === "ALL") {
     storesToDeploy = Object.keys(storeConfig);
 } else {
     storesToDeploy = input.split(",").map(s => s.trim()).filter(Boolean);
