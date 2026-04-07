@@ -6,12 +6,12 @@ const source = process.argv[2];
 const targets = process.argv[3]?.split(",").filter(t => t !== source);
 
 if (!source || !process.argv[3]) {
-    console.error("❌ Usage: node sync.js <source-store> <target1,target2>");
+    console.error("❌ Usage: node sync.js <source-store> <targets>");
     process.exit(1);
 }
 
 if (targets.length === 0) {
-    console.log("⚠️ No targets to sync.");
+    console.error("⚠️ No targets to sync.");
     process.exit(0);
 }
 
@@ -20,7 +20,7 @@ function copyFile(srcRoot, destRoot, relativePath) {
     const destPath = path.join(destRoot, relativePath);
 
     if (!fs.existsSync(srcPath)) {
-        console.warn(`⚠️ Skipping (not found): ${relativePath}`);
+        console.error(`⚠️ Skipping (not found): ${relativePath}`);
         return;
     }
 
@@ -29,12 +29,9 @@ function copyFile(srcRoot, destRoot, relativePath) {
     console.log(`✔ Synced: ${relativePath}`);
 }
 
-// ✅ ONLY CURRENT COMMIT FILES
+// ✅ Only changed files
 const changedFiles = getChangedFiles();
 
-console.log("\n📂 Changed Files:", changedFiles);
-
-// filter only source store files
 const storeFiles = changedFiles.filter(file =>
     file.startsWith(`stores/${source}/`)
 );
@@ -43,13 +40,15 @@ const relativeFiles = storeFiles.map(file =>
     file.replace(`stores/${source}/`, "")
 );
 
+console.error("📂 Files to sync:", relativeFiles);
+
 if (relativeFiles.length === 0) {
-    console.log("⚠️ No changed files to sync.");
+    console.error("⚠️ No changed files to sync.");
     process.exit(0);
 }
 
 targets.forEach(target => {
-    console.log(`\n🔁 Syncing changed files: ${source} → ${target}`);
+    console.log(`\n🔁 Syncing: ${source} → ${target}`);
 
     relativeFiles.forEach(file => {
         copyFile(`./stores/${source}`, `./stores/${target}`, file);

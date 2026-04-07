@@ -1,9 +1,10 @@
 const { execSync } = require("child_process");
-const storeConfig = require("../config/stores.json");
 const getChangedFiles = require("./getChangedFiles.js");
 
 function getCommitMessage() {
-    return execSync("git log -1 --pretty=%B").toString().trim();
+    const msg = execSync("git log -1 --pretty=%B").toString().trim();
+    console.error("🧾 Commit Message:", msg); // ✅ log
+    return msg;
 }
 
 function extractStoresFromFiles(files) {
@@ -27,31 +28,38 @@ function main() {
     const msg = getCommitMessage();
     const files = getChangedFiles();
 
-    console.log("🧾 Commit Message:", msg);
-    console.log("📂 Changed Files:", files);
+    // ✅ If no store folder changes → SKIP
+    const hasStoreChanges = files.some(f => f.startsWith("stores/"));
+
+    if (!hasStoreChanges) {
+        console.error("⏭️ No store changes detected.");
+        console.log("SKIP"); // ✅ ONLY OUTPUT
+        return;
+    }
 
     // ✅ ALL_SYNC
     if (msg.includes("[ALL_SYNC]")) {
         const source = getSourceStore(files);
-        if (!source) {
-            console.log("ALL"); // fallback
-            return;
-        }
-        console.log(`ALL_SYNC:${source}`);
+        console.error("🔁 ALL_SYNC triggered. Source:", source);
+
+        console.log(source ? `ALL_SYNC:${source}` : "ALL"); // ✅ ONLY OUTPUT
         return;
     }
 
     // ✅ Manual store selection
     const match = msg.match(/\[([^\]]+)\]/);
     if (match) {
-        console.log(match[1]);
+        console.error("🎯 Manual stores:", match[1]);
+        console.log(match[1]); // ✅ ONLY OUTPUT
         return;
     }
 
     // ✅ Auto detect
     const stores = extractStoresFromFiles(files);
 
-    console.log(stores.length > 0 ? stores.join(",") : "ALL");
+    console.error("📦 Auto detected stores:", stores);
+
+    console.log(stores.length > 0 ? stores.join(",") : "ALL"); // ✅ ONLY OUTPUT
 }
 
 main();

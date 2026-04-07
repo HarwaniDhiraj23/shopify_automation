@@ -1,7 +1,4 @@
 const { execSync } = require("child_process");
-const fs = require("fs");
-const path = require("path");
-
 const storeConfig = require("../config/stores.json");
 
 const input = process.argv[2];
@@ -15,101 +12,24 @@ let storesToDeploy = [];
 
 if (input.startsWith("ALL_SYNC")) {
     const source = input.split(":")[1];
+    console.log(`🔁 ALL_SYNC deployment. Source: ${source}`);
     storesToDeploy = Object.keys(storeConfig);
-    console.log(`🔁 ALL_SYNC triggered from source: ${source}`);
 } else if (input === "ALL") {
     storesToDeploy = Object.keys(storeConfig);
+} else if (input === "SKIP") {
+    console.log("⏭️ Skipping deployment.");
+    process.exit(0);
 } else {
     storesToDeploy = input.split(",").map(s => s.trim()).filter(Boolean);
 }
 
-console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
-
-// ─────────────────────────────────────────────
-// SYNC
-// ─────────────────────────────────────────────
-
-const FILES_TO_SYNC = [
-    "sections/header.liquid",
-    "sections/footer.liquid",
-    "config/settings_schema.json",
-    "config/settings_data.json",
-    "layout/theme.liquid"
-];
-
-const DIRS_TO_SYNC = [
-    "assets",
-    "layout",
-    "locales",
-    "sections",
-    "templates"     // ✅ base.css, theme.css, app.js, etc.
-];
-
-function copyFile(srcRoot, destRoot, relativePath) {
-    const srcPath = path.join(srcRoot, relativePath);
-    const destPath = path.join(destRoot, relativePath);
-
-    if (!fs.existsSync(srcPath)) return;
-
-    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    fs.copyFileSync(srcPath, destPath);
-    console.log(`✔  Synced: ${relativePath}`);
-}
-
-function syncDir(srcRoot, destRoot, dir) {
-    const srcDir = path.join(srcRoot, dir);
-    if (!fs.existsSync(srcDir)) return;
-
-    fs.readdirSync(srcDir).forEach(file => {
-        if (file.startsWith(".")) return;
-
-        const relativePath = path.join(dir, file);
-        const fullSrcPath = path.join(srcRoot, relativePath);
-
-        // ✅ Recurse into subdirectories instead of trying to copy them
-        if (fs.statSync(fullSrcPath).isDirectory()) {
-            syncDir(srcRoot, destRoot, relativePath);
-        } else {
-            copyFile(srcRoot, destRoot, relativePath);
-        }
-    });
-}
-
-function syncBetweenStores(stores) {
-    if (stores.length <= 1) {
-        console.log("ℹ️  Single store — skipping sync.");
-        return;
-    }
-
-    const source = stores[0];
-    const targets = stores.slice(1);
-
-    console.log(`\n🔁 Syncing shared files: ${source} → ${targets.join(", ")}`);
-
-    targets.forEach(target => {
-        console.log(`\n   → ${target}`);
-
-        FILES_TO_SYNC.forEach(file =>
-            copyFile(`./stores/${source}`, `./stores/${target}`, file)
-        );
-
-        DIRS_TO_SYNC.forEach(dir =>
-            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
-        );
-    });
-
-    console.log("\n✅ Sync complete.");
-}
-
-// ─────────────────────────────────────────────
-// DEPLOY
-// ─────────────────────────────────────────────
+console.log(`📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 function deployStore(store) {
     const config = storeConfig[store];
 
     if (!config) {
-        console.error(`❌ No config found for store: "${store}" in stores.json`);
+        console.error(`❌ No config for store: ${store}`);
         return;
     }
 
@@ -118,14 +38,11 @@ function deployStore(store) {
     const themeId = process.env[config.envTheme];
 
     if (!storeUrl || !token || !themeId) {
-        console.error(`❌ Missing env vars for: ${store}`);
-        console.error(`   ${config.envStore} = ${storeUrl || "MISSING"}`);
-        console.error(`   ${config.envToken} = ${token ? "SET" : "MISSING"}`);
-        console.error(`   ${config.envTheme} = ${themeId || "MISSING"}`);
+        console.error(`❌ Missing env for: ${store}`);
         process.exit(1);
     }
 
-    console.log(`\n🚀 Deploying: ${store} → theme ${themeId}`);
+    console.log(`🚀 Deploying: ${store}`);
 
     execSync(
         `shopify theme push --path ./stores/${store} --store ${storeUrl} --password ${token} --theme ${themeId} --allow-live`,
@@ -135,10 +52,6 @@ function deployStore(store) {
     console.log(`✅ Deployed: ${store}`);
 }
 
-// ─────────────────────────────────────────────
-// RUN
-// ─────────────────────────────────────────────
+storesToDeploy.forEach(deployStore);
 
-syncBetweenStores(storesToDeploy);
-storesToDeploy.forEach(store => deployStore(store));
-console.log("\n🎉 All deployments complete!");
+console.log("🎉 Deployment complete!");

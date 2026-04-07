@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'stores/**'   # ✅ only trigger when stores change
 
 jobs:
   deploy:
@@ -27,6 +29,12 @@ jobs:
           STORES=$(node scripts/detect-stores.js)
           echo "Detected: $STORES"
           echo "stores=$STORES" >> $GITHUB_OUTPUT
+
+      - name: Stop if no store changes
+        if: steps.detect.outputs.stores == 'SKIP'
+        run: |
+          echo "⏭️ Skipping deployment (no store changes)"
+          exit 0
 
       - name: Sync (ONLY changed files)
         if: contains(steps.detect.outputs.stores, 'ALL_SYNC')
