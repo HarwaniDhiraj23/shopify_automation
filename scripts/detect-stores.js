@@ -7,7 +7,7 @@ const getChangedFiles = require("./getChangedFiles.js");
 // ─────────────────────────────────────────────
 function getCommitMessage() {
     const msg = execSync("git log -1 --pretty=%B").toString().trim();
-    console.error("🧾 Commit Message:", msg); // ✅ DEBUG LOG
+    console.error("🧾 Commit Message:", msg);
     return msg;
 }
 
@@ -45,19 +45,17 @@ function main() {
 
     console.error("📂 Changed Files:", files);
 
-    // ─────────────────────────────────────────
-    // ✅ Check if any store files changed
-    // ─────────────────────────────────────────
+    // ✅ Only run if stores folder changed
     const hasStoreChanges = files.some(f => f.startsWith("stores/"));
 
     if (!hasStoreChanges) {
         console.error("⏭️ No changes in /stores folder. Skipping...");
-        console.log("SKIP"); // ✅ ONLY OUTPUT
+        console.log("SKIP");
         return;
     }
 
     // ─────────────────────────────────────────
-    // ✅ Handle ALL_SYNC
+    // ✅ ALL_SYNC
     // ─────────────────────────────────────────
     if (msg.includes("[ALL_SYNC]")) {
         const source = getSourceStore(files);
@@ -65,20 +63,19 @@ function main() {
         console.error("🔁 ALL_SYNC Triggered");
         console.error("📦 Source Store:", source);
 
-        console.log(source ? `ALL_SYNC:${source}` : "ALL"); // ✅ ONLY OUTPUT
+        console.log(source ? `ALL_SYNC:${source}` : "ALL");
         return;
     }
 
     // ─────────────────────────────────────────
-    // ✅ Handle Manual Store Selection
-    // Example: [store-a,store-b]
+    // ✅ Manual Store Selection (EXACT MATCH)
     // ─────────────────────────────────────────
     const match = msg.match(/\[([^\]]+)\]/);
 
     if (match) {
         const inputStores = match[1]
             .split(",")
-            .map(s => s.trim().toLowerCase()); // ✅ normalize
+            .map(s => s.trim()); // ✅ NO lowercase
 
         const validStores = Object.keys(storeConfig);
 
@@ -95,25 +92,24 @@ function main() {
 
         if (filteredStores.length === 0) {
             console.error("❌ No valid stores found. Skipping...");
-            console.log("SKIP"); // ✅ ONLY OUTPUT
+            console.log("SKIP");
             return;
         }
 
         console.error("✅ Final Stores to Deploy:", filteredStores);
 
-        console.log(filteredStores.join(",")); // ✅ ONLY OUTPUT
+        console.log(filteredStores.join(","));
         return;
     }
 
     // ─────────────────────────────────────────
-    // ✅ Auto Detect Stores from Changed Files
+    // ✅ Auto Detect
     // ─────────────────────────────────────────
     const stores = extractStoresFromFiles(files);
 
     console.error("📦 Auto Detected Stores:", stores);
 
-    console.log(stores.length > 0 ? stores.join(",") : "ALL"); // ✅ ONLY OUTPUT
+    console.log(stores.length > 0 ? stores.join(",") : "ALL");
 }
 
-// ─────────────────────────────────────────────
 main();
