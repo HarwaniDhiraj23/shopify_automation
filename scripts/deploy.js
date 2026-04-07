@@ -1,4 +1,7 @@
 const { execSync } = require("child_process");
+const fs = require("fs");
+const path = require("path");
+
 const storeConfig = require("../config/stores.json");
 
 const input = process.argv[2];
@@ -10,48 +13,86 @@ if (!input) {
 
 let storesToDeploy = [];
 
-if (input.startsWith("ALL_SYNC")) {
-    const source = input.split(":")[1];
-    console.log(`🔁 ALL_SYNC deployment. Source: ${source}`);
+if (input === "ALL" || input === "ALL_SYNC") {
     storesToDeploy = Object.keys(storeConfig);
-} else if (input === "ALL") {
-    storesToDeploy = Object.keys(storeConfig);
-} else if (input === "SKIP") {
-    console.log("⏭️ Skipping deployment.");
-    process.exit(0);
 } else {
     storesToDeploy = input.split(",").map(s => s.trim()).filter(Boolean);
 }
 
-console.log(`📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
+console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
-function deployStore(store) {
-    const config = storeConfig[store];
+// ─────────────────────────────────────────────
+// SYNC
+// ─────────────────────────────────────────────
 
-    if (!config) {
-        console.error(`❌ No config for store: ${store}`);
+const FILES_TO_SYNC = [
+    "sections/header.liquid",
+    "sections/footer.liquid",
+    "config/settings_schema.json",
+    "config/settings_data.json",
+    "layout/theme.liquid"
+];
+
+const DIRS_TO_SYNC = [
+    "assets",
+    "layout",
+    "locales",
+    "sections",
+    "templates"     // ✅ base.css, theme.css, app.js, etc.
+];
+
+function copyFile(srcRoot, destRoot, relativePath) {
+    const srcPath = path.join(srcRoot, relativePath);
+    const destPath = path.join(destRoot, relativePath);
+
+    if (!fs.existsSync(srcPath)) return;
+
+    fs.mkdirSync(path.dirname(destPath), { recursive: true });
+    fs.copyFileSync(srcPath, destPath);
+    console.log(`✔  Synced: ${relativePath}`);
+}
+
+function syncDir(srcRoot, destRoot, dir) {
+    const srcDir = path.join(srcRoot, dir);
+    if (!fs.existsSync(srcDir)) return;
+
+    fs.readdirSync(srcDir).forEach(file => {
+        if (file.startsWith(".")) return;
+
+        const relativePath = path.join(dir, file);
+        const fullSrcPath = path.join(srcRoot, relativePath);
+
+        // ✅ Recurse into subdirectories instead of trying to copy them
+        if (fs.statSync(fullSrcPath).isDirectory()) {
+            syncDir(srcRoot, destRoot, relativePath);
+        } else {
+            copyFile(srcRoot, destRoot, relativePath);
+        }
+    });
+}
+
+function syncBetweenStores(stores) {
+    if (stores.length <= 1) {
+        console.log("ℹ️  Single store — skipping sync.");
         return;
     }
 
-    const storeUrl = process.env[config.envStore];
-    const token = process.env[config.envToken];
-    const themeId = process.env[config.envTheme];
+    const source = stores[0];
+    const targets = stores.slice(1);
 
-    if (!storeUrl || !token || !themeId) {
-        console.error(`❌ Missing env for: ${store}`);
-        process.exit(1);
-    }
+    console.log(`\n🔁 Syncing shared files: ${source} → ${targets.join(", ")}`);
 
-    console.log(`🚀 Deploying: ${store}`);
+    targets.forEach(target => {
+        console.log(`\n   → ${target}`);
 
-    execSync(
-        `shopify theme push --path ./stores/${store} --store ${storeUrl} --password ${token} --theme ${themeId} --allow-live`,
-        { stdio: "inherit" }
-    );
+        FILES_TO_SYNC.forEach(file =>
+            copyFile(`./stores/${source}`, `./stores/${target}`, file)
+        );
 
-    console.log(`✅ Deployed: ${store}`);
+        DIRS_TO_SYNC.forEach(dir =>
+            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
+        );
+    });
+
+    console.log("\n✅ Sync complete.");
 }
-
-storesToDeploy.forEach(deployStore);
-
-console.log("🎉 Deployment complete!");
