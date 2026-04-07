@@ -33,21 +33,31 @@ Add every store here. No script changes needed when adding new stores.
 
 ```json
 {
-  "store-a": {
-    "envStore": "SHOPIFY_STORE_A",
-    "envToken": "SHOPIFY_TOKEN_A",
-    "envTheme": "SHOPIFY_THEME_A"
-  },
-  "store-b": {
-    "envStore": "SHOPIFY_STORE_B",
-    "envToken": "SHOPIFY_TOKEN_B",
-    "envTheme": "SHOPIFY_THEME_B"
-  },
-  "store-c": {
-    "envStore": "SHOPIFY_STORE_C",
-    "envToken": "SHOPIFY_TOKEN_C",
-    "envTheme": "SHOPIFY_THEME_C"
-  }
+    "new-dev-store": {
+        "envStore": "SHOPIFY_STORE_NEW_DEV_STORE",
+        "envToken": "SHOPIFY_TOKEN_NEW_DEV_STORE",
+        "envTheme": "SHOPIFY_THEME_NEW_DEV_STORE"
+    },
+    "shopify-dev-store": {
+        "envStore": "SHOPIFY_STORE_SHOPIFY_DEV_STORE",
+        "envToken": "SHOPIFY_TOKEN_SHOPIFY_DEV_STORE",
+        "envTheme": "SHOPIFY_THEME_SHOPIFY_DEV_STORE"
+    },
+    "pixelCart": {
+        "envStore": "SHOPIFY_STORE_PIXELCART",
+        "envToken": "SHOPIFY_TOKEN_PIXELCART",
+        "envTheme": "SHOPIFY_THEME_PIXELCART"
+    },
+    "devNest": {
+        "envStore": "SHOPIFY_STORE_DEVNEST",
+        "envToken": "SHOPIFY_TOKEN_DEVNEST",
+        "envTheme": "SHOPIFY_THEME_DEVNEST"
+    },
+    "codeCart-lab": {
+        "envStore": "SHOPIFY_STORE_CODECART_LAB",
+        "envToken": "SHOPIFY_TOKEN_CODECART_LAB",
+        "envTheme": "SHOPIFY_THEME_CODECART_LAB"
+    }
 }
 ```
 
@@ -152,25 +162,27 @@ main();
 ```js
 const fs = require("fs");
 const path = require("path");
+const { execSync } = require("child_process");
 
 const source = process.argv[2];
-const targets = process.argv[3].split(",").filter(t => t !== source);
+const targetsRaw = process.argv[3];
+const specificFilesArg = process.argv[4]; // optional: "assets/base.css,assets/collage.css"
 
-const FILES_TO_SYNC = [
-    "sections/header.liquid",
-    "sections/footer.liquid",
-    "config/settings_schema.json",
-    "config/settings_data.json",
-    "layout/theme.liquid"
-];
+if (!source || !targetsRaw) {
+    console.error("❌ Usage: node sync.js <source-store> <target1,target2> [file1,file2]");
+    process.exit(1);
+}
 
-const DIRS_TO_SYNC = [
-    "assets",
-    "layout",
-    "locales",
-    "sections",
-    "templates"     // ✅ base.css, theme.css, app.js, etc.
-];
+const targets = targetsRaw.split(",").filter(t => t !== source);
+
+if (targets.length === 0) {
+    console.log("⚠️  No targets to sync.");
+    process.exit(0);
+}
+
+// ─────────────────────────────────────────────
+// HELPERS
+// ─────────────────────────────────────────────
 
 function copyFile(srcRoot, destRoot, relativePath) {
     const srcPath = path.join(srcRoot, relativePath);
@@ -196,7 +208,6 @@ function syncDir(srcRoot, destRoot, dir) {
         const relativePath = path.join(dir, file);
         const fullSrcPath = path.join(srcRoot, relativePath);
 
-        // ✅ Recurse into subdirectories
         if (fs.statSync(fullSrcPath).isDirectory()) {
             syncDir(srcRoot, destRoot, relativePath);
         } else {
@@ -205,26 +216,86 @@ function syncDir(srcRoot, destRoot, dir) {
     });
 }
 
-if (!source || !process.argv[3]) {
-    console.error("❌ Usage: node sync.js <source-store> <target1,target2>");
-    process.exit(1);
+// ─────────────────────────────────────────────
+// GIT DIFF — Changed files from source store
+// ─────────────────────────────────────────────
+
+function getChangedFilesFromGit(sourceStore) {
+    try {
+        const allChanged = execSync("git diff --name-only HEAD~1 HEAD")
+            .toString()
+            .trim()
+            .split("\n")
+            .filter(Boolean);
+
+        return allChanged
+            .filter(f => f.startsWith(`stores/${sourceStore}/`))
+            .map(f => f.replace(`stores/${sourceStore}/`, ""));
+    } catch {
+        return [];
+    }
 }
 
-if (targets.length === 0) {
-    console.log("⚠️  No targets to sync.");
-    process.exit(0);
+// ─────────────────────────────────────────────
+// FULL SYNC CONFIG (used only for ALL_SYNC)
+// ─────────────────────────────────────────────
+
+const FILES_TO_SYNC = [
+    "sections/header.liquid",
+    "sections/footer.liquid",
+    "config/settings_schema.json",
+    "config/settings_data.json",
+    "layout/theme.liquid"
+];
+
+const DIRS_TO_SYNC = [
+    "assets",
+    "layout",
+    "locales",
+    "sections",
+    "templates"
+];
+
+// ─────────────────────────────────────────────
+// RUN SYNC
+// ─────────────────────────────────────────────
+
+// Priority: explicit file list → git diff → full sync
+let filesToSync = [];
+let isFullSync = false;
+
+if (specificFilesArg) {
+    // Explicit file list passed (e.g. from workflow)
+    filesToSync = specificFilesArg.split(",").map(f => f.trim()).filter(Boolean);
+    console.log(`\n📋 Using explicit file list: ${filesToSync.join(", ")}`);
+} else {
+    // Auto-detect from git diff
+    filesToSync = getChangedFilesFromGit(source);
+
+    if (filesToSync.length > 0) {
+        console.log(`\n📋 Git-detected changed files: ${filesToSync.join(", ")}`);
+    } else {
+        // Fallback: full sync (ALL_SYNC scenario)
+        isFullSync = true;
+        console.log(`\n📋 No git-diff files found — running full sync.`);
+    }
 }
 
 targets.forEach(target => {
     console.log(`\n🔁 Syncing: ${source} → ${target}`);
 
-    FILES_TO_SYNC.forEach(file =>
-        copyFile(`./stores/${source}`, `./stores/${target}`, file)
-    );
-
-    DIRS_TO_SYNC.forEach(dir =>
-        syncDir(`./stores/${source}`, `./stores/${target}`, dir)
-    );
+    if (isFullSync) {
+        FILES_TO_SYNC.forEach(file =>
+            copyFile(`./stores/${source}`, `./stores/${target}`, file)
+        );
+        DIRS_TO_SYNC.forEach(dir =>
+            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
+        );
+    } else {
+        filesToSync.forEach(file =>
+            copyFile(`./stores/${source}`, `./stores/${target}`, file)
+        );
+    }
 
     console.log(`✅ Done: ${source} → ${target}`);
 });
@@ -259,24 +330,8 @@ if (input === "ALL" || input === "ALL_SYNC") {
 console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 // ─────────────────────────────────────────────
-// SYNC
+// HELPERS
 // ─────────────────────────────────────────────
-
-const FILES_TO_SYNC = [
-    "sections/header.liquid",
-    "sections/footer.liquid",
-    "config/settings_schema.json",
-    "config/settings_data.json",
-    "layout/theme.liquid"
-];
-
-const DIRS_TO_SYNC = [
-    "assets",
-    "layout",
-    "locales",
-    "sections",
-    "templates"     // ✅ base.css, theme.css, app.js, etc.
-];
 
 function copyFile(srcRoot, destRoot, relativePath) {
     const srcPath = path.join(srcRoot, relativePath);
@@ -299,7 +354,6 @@ function syncDir(srcRoot, destRoot, dir) {
         const relativePath = path.join(dir, file);
         const fullSrcPath = path.join(srcRoot, relativePath);
 
-        // ✅ Recurse into subdirectories instead of trying to copy them
         if (fs.statSync(fullSrcPath).isDirectory()) {
             syncDir(srcRoot, destRoot, relativePath);
         } else {
@@ -308,7 +362,50 @@ function syncDir(srcRoot, destRoot, dir) {
     });
 }
 
-function syncBetweenStores(stores) {
+// ─────────────────────────────────────────────
+// GIT DIFF — Only changed files
+// ─────────────────────────────────────────────
+
+function getChangedFiles() {
+    try {
+        return execSync("git diff --name-only HEAD~1 HEAD")
+            .toString()
+            .trim()
+            .split("\n")
+            .filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+function extractRelativePaths(files, sourceStore) {
+    // stores/store-a/assets/base.css  →  assets/base.css
+    return files
+        .filter(f => f.startsWith(`stores/${sourceStore}/`))
+        .map(f => f.replace(`stores/${sourceStore}/`, ""));
+}
+
+// ─────────────────────────────────────────────
+// SYNC
+// ─────────────────────────────────────────────
+
+const FILES_TO_SYNC = [
+    "sections/header.liquid",
+    "sections/footer.liquid",
+    "config/settings_schema.json",
+    "config/settings_data.json",
+    "layout/theme.liquid"
+];
+
+const DIRS_TO_SYNC = [
+    "assets",
+    "layout",
+    "locales",
+    "sections",
+    "templates"
+];
+
+function syncBetweenStores(stores, isAllSync) {
     if (stores.length <= 1) {
         console.log("ℹ️  Single store — skipping sync.");
         return;
@@ -317,22 +414,90 @@ function syncBetweenStores(stores) {
     const source = stores[0];
     const targets = stores.slice(1);
 
-    console.log(`\n🔁 Syncing shared files: ${source} → ${targets.join(", ")}`);
+    // ALL_SYNC → full directory sync (intentional global update)
+    if (isAllSync) {
+        console.log(`\n🔁 ALL_SYNC: Full sync from ${source} → ${targets.join(", ")}`);
+
+        targets.forEach(target => {
+            console.log(`\n   → ${target}`);
+
+            FILES_TO_SYNC.forEach(file =>
+                copyFile(`./stores/${source}`, `./stores/${target}`, file)
+            );
+
+            DIRS_TO_SYNC.forEach(dir =>
+                syncDir(`./stores/${source}`, `./stores/${target}`, dir)
+            );
+        });
+
+        console.log("\n✅ Full sync complete.");
+        return;
+    }
+
+    // Selective sync → only git-changed files from source store
+    const changedFiles = getChangedFiles();
+    const filesToSync = extractRelativePaths(changedFiles, source);
+
+    if (filesToSync.length === 0) {
+        console.log("ℹ️  No changed files detected in source store — skipping sync.");
+        return;
+    }
+
+    console.log(`\n🔁 Syncing changed files only: ${source} → ${targets.join(", ")}`);
+    console.log(`   Files: ${filesToSync.join(", ")}`);
 
     targets.forEach(target => {
         console.log(`\n   → ${target}`);
-
-        FILES_TO_SYNC.forEach(file =>
+        filesToSync.forEach(file =>
             copyFile(`./stores/${source}`, `./stores/${target}`, file)
-        );
-
-        DIRS_TO_SYNC.forEach(dir =>
-            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
         );
     });
 
-    console.log("\n✅ Sync complete.");
+    console.log("\n✅ Selective sync complete.");
 }
+
+// ─────────────────────────────────────────────
+// DEPLOY
+// ─────────────────────────────────────────────
+
+function deployStore(store) {
+    const config = storeConfig[store];
+
+    if (!config) {
+        console.error(`❌ No config found for store: "${store}" in stores.json`);
+        return;
+    }
+
+    const storeUrl = process.env[config.envStore];
+    const token = process.env[config.envToken];
+    const themeId = process.env[config.envTheme];
+
+    if (!storeUrl || !token || !themeId) {
+        console.error(`❌ Missing env vars for: ${store}`);
+        console.error(`   ${config.envStore} = ${storeUrl || "MISSING"}`);
+        console.error(`   ${config.envToken} = ${token ? "SET" : "MISSING"}`);
+        console.error(`   ${config.envTheme} = ${themeId || "MISSING"}`);
+        process.exit(1);
+    }
+
+    console.log(`\n🚀 Deploying: ${store} → theme ${themeId}`);
+
+    execSync(
+        `shopify theme push --path ./stores/${store} --store ${storeUrl} --password ${token} --theme ${themeId} --allow-live`,
+        { stdio: "inherit" }
+    );
+
+    console.log(`✅ Deployed: ${store}`);
+}
+
+// ─────────────────────────────────────────────
+// RUN
+// ─────────────────────────────────────────────
+
+const isAllSync = input === "ALL_SYNC";
+syncBetweenStores(storesToDeploy, isAllSync);
+storesToDeploy.forEach(store => deployStore(store));
+console.log("\n🎉 All deployments complete!");
 
 // ─────────────────────────────────────────────
 // DEPLOY
@@ -388,6 +553,8 @@ on:
   push:
     branches:
       - master
+    paths:
+      - 'stores/**'   # ✅ only trigger when stores change
 
 jobs:
   deploy:
@@ -429,6 +596,18 @@ jobs:
           SHOPIFY_STORE_SHOPIFY_DEV_STORE: ${{ secrets.SHOPIFY_STORE_SHOPIFY_DEV_STORE }}
           SHOPIFY_TOKEN_SHOPIFY_DEV_STORE: ${{ secrets.SHOPIFY_TOKEN_SHOPIFY_DEV_STORE }}
           SHOPIFY_THEME_SHOPIFY_DEV_STORE: ${{ secrets.SHOPIFY_THEME_SHOPIFY_DEV_STORE }}
+
+          SHOPIFY_STORE_PIXELCART: ${{ secrets.SHOPIFY_STORE_PIXELCART }}
+          SHOPIFY_TOKEN_PIXELCART: ${{ secrets.SHOPIFY_TOKEN_PIXELCART }}
+          SHOPIFY_THEME_PIXELCART: ${{ secrets.SHOPIFY_THEME_PIXELCART }}
+
+          SHOPIFY_STORE_DEVNEST: ${{ secrets.SHOPIFY_STORE_DEVNEST }}
+          SHOPIFY_TOKEN_DEVNEST: ${{ secrets.SHOPIFY_TOKEN_DEVNEST }}
+          SHOPIFY_THEME_DEVNEST: ${{ secrets.SHOPIFY_THEME_DEVNEST }}
+
+          SHOPIFY_STORE_CODECART_LAB: ${{ secrets.SHOPIFY_STORE_CODECART_LAB }}
+          SHOPIFY_TOKEN_CODECART_LAB: ${{ secrets.SHOPIFY_TOKEN_CODECART_LAB }}
+          SHOPIFY_THEME_CODECART_LAB: ${{ secrets.SHOPIFY_THEME_CODECART_LAB }}
 
           # Add more stores following the same pattern...
 ```
