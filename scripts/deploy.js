@@ -22,24 +22,8 @@ if (input === "ALL" || input === "ALL_SYNC") {
 console.log(`\n📋 Stores to deploy: ${storesToDeploy.join(", ")}`);
 
 // ─────────────────────────────────────────────
-// SYNC
+// HELPERS
 // ─────────────────────────────────────────────
-
-const FILES_TO_SYNC = [
-    "sections/header.liquid",
-    "sections/footer.liquid",
-    "config/settings_schema.json",
-    "config/settings_data.json",
-    "layout/theme.liquid"
-];
-
-const DIRS_TO_SYNC = [
-    "assets",
-    "layout",
-    "locales",
-    "sections",
-    "templates"     // ✅ base.css, theme.css, app.js, etc.
-];
 
 function copyFile(srcRoot, destRoot, relativePath) {
     const srcPath = path.join(srcRoot, relativePath);
@@ -62,7 +46,6 @@ function syncDir(srcRoot, destRoot, dir) {
         const relativePath = path.join(dir, file);
         const fullSrcPath = path.join(srcRoot, relativePath);
 
-        // ✅ Recurse into subdirectories instead of trying to copy them
         if (fs.statSync(fullSrcPath).isDirectory()) {
             syncDir(srcRoot, destRoot, relativePath);
         } else {
@@ -71,7 +54,50 @@ function syncDir(srcRoot, destRoot, dir) {
     });
 }
 
-function syncBetweenStores(stores) {
+// ─────────────────────────────────────────────
+// GIT DIFF — Only changed files
+// ─────────────────────────────────────────────
+
+function getChangedFiles() {
+    try {
+        return execSync("git diff --name-only HEAD~1 HEAD")
+            .toString()
+            .trim()
+            .split("\n")
+            .filter(Boolean);
+    } catch {
+        return [];
+    }
+}
+
+function extractRelativePaths(files, sourceStore) {
+    // stores/store-a/assets/base.css  →  assets/base.css
+    return files
+        .filter(f => f.startsWith(`stores/${sourceStore}/`))
+        .map(f => f.replace(`stores/${sourceStore}/`, ""));
+}
+
+// ─────────────────────────────────────────────
+// SYNC
+// ─────────────────────────────────────────────
+
+const FILES_TO_SYNC = [
+    "sections/header.liquid",
+    "sections/footer.liquid",
+    "config/settings_schema.json",
+    "config/settings_data.json",
+    "layout/theme.liquid"
+];
+
+const DIRS_TO_SYNC = [
+    "assets",
+    "layout",
+    "locales",
+    "sections",
+    "templates"
+];
+
+function syncBetweenStores(stores, isAllSync) {
     if (stores.length <= 1) {
         console.log("ℹ️  Single store — skipping sync.");
         return;
@@ -80,19 +106,87 @@ function syncBetweenStores(stores) {
     const source = stores[0];
     const targets = stores.slice(1);
 
-    console.log(`\n🔁 Syncing shared files: ${source} → ${targets.join(", ")}`);
+    // ALL_SYNC → full directory sync (intentional global update)
+    if (isAllSync) {
+        console.log(`\n🔁 ALL_SYNC: Full sync from ${source} → ${targets.join(", ")}`);
+
+        targets.forEach(target => {
+            console.log(`\n   → ${target}`);
+
+            FILES_TO_SYNC.forEach(file =>
+                copyFile(`./stores/${source}`, `./stores/${target}`, file)
+            );
+
+            DIRS_TO_SYNC.forEach(dir =>
+                syncDir(`./stores/${source}`, `./stores/${target}`, dir)
+            );
+        });
+
+        console.log("\n✅ Full sync complete.");
+        return;
+    }
+
+    // Selective sync → only git-changed files from source store
+    const changedFiles = getChangedFiles();
+    const filesToSync = extractRelativePaths(changedFiles, source);
+
+    if (filesToSync.length === 0) {
+        console.log("ℹ️  No changed files detected in source store — skipping sync.");
+        return;
+    }
+
+    console.log(`\n🔁 Syncing changed files only: ${source} → ${targets.join(", ")}`);
+    console.log(`   Files: ${filesToSync.join(", ")}`);
 
     targets.forEach(target => {
         console.log(`\n   → ${target}`);
-
-        FILES_TO_SYNC.forEach(file =>
+        filesToSync.forEach(file =>
             copyFile(`./stores/${source}`, `./stores/${target}`, file)
-        );
-
-        DIRS_TO_SYNC.forEach(dir =>
-            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
         );
     });
 
-    console.log("\n✅ Sync complete.");
+    console.log("\n✅ Selective sync complete.");
 }
+
+// ─────────────────────────────────────────────
+// DEPLOY
+// ─────────────────────────────────────────────
+
+function deployStore(store) {
+    const config = storeConfig[store];
+
+    if (!config) {
+        console.error(`❌ No config found for store: "${store}" in stores.json`);
+        return;
+    }
+
+    const storeUrl = process.env[config.envStore];
+    const token = process.env[config.envToken];
+    const themeId = process.env[config.envTheme];
+
+    if (!storeUrl || !token || !themeId) {
+        console.error(`❌ Missing env vars for: ${store}`);
+        console.error(`   ${config.envStore} = ${storeUrl || "MISSING"}`);
+        console.error(`   ${config.envToken} = ${token ? "SET" : "MISSING"}`);
+        console.error(`   ${config.envTheme} = ${themeId || "MISSING"}`);
+        process.exit(1);
+    }
+
+    console.log(`\n🚀 Deploying: ${store} → theme ${themeId}`);
+
+    execSync(
+        `shopify theme push --path ./stores/${store} --store ${storeUrl} --password ${token} --theme ${themeId} --allow-live`,
+        { stdio: "inherit" }
+    );
+
+    console.log(`✅ Deployed: ${store}`);
+}
+
+// ─────────────────────────────────────────────
+// RUN
+// ─────────────────────────────────────────────
+
+const isAllSync = input === "ALL_SYNC";
+syncBetweenStores(storesToDeploy, isAllSync);
+storesToDeploy.forEach(store => deployStore(store));
+console.log("\n🎉 All deployments complete!");
