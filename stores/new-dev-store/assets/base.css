@@ -3364,3 +3364,21 @@ details-disclosure>details {
 
 
 /* new dummy css end 25555*/
+
+
+/* new new new */
+.dummy-scope .footer {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #777;
+}
+
+.dummy-scope1 .footer1 {
+  text-align: center;
+  margin-top: 20px;
+  font-size: 14px;
+  color: #777;
+}
+
+/* new new new */
