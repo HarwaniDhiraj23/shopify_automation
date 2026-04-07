@@ -23,5 +23,10 @@
         "envStore": "SHOPIFY_STORE_CODECART_LAB",
         "envToken": "SHOPIFY_TOKEN_CODECART_LAB",
         "envTheme": "SHOPIFY_THEME_CODECART_LAB"
+    },
+    "devDemo": {
+        "envStore": "SHOPIFY_STORE_DEVDEMO",
+        "envToken": "SHOPIFY_TOKEN_DEVDEMO",
+        "envTheme": "SHOPIFY_THEME_DEVDEMO"
     }
 }

@@ -67,7 +67,7 @@ Add every store here. No script changes needed when adding new stores.
 
 ## 🔐 2. GitHub Secrets
 
-Go to **GitHub → Settings → Secrets → Actions** and add 3 secrets per store:
+Go to **GitHub → Settings → Secrets and variables → Actions** and add 3 secrets per store:
 
 | Secret | Value |
 |--------|-------|
