@@ -1,139 +1,118 @@
 const fs = require("fs");
-const path = require("path");
 const { execSync } = require("child_process");
 
 const source = process.argv[2];
 const targetsRaw = process.argv[3];
-const specificFilesArg = process.argv[4]; // optional: "assets/base.css,assets/collage.css"
 
 if (!source || !targetsRaw) {
-    console.error("❌ Usage: node sync.js <source-store> <target1,target2> [file1,file2]");
+    console.error("❌ Usage: node sync.js <source-store> <target1,target2>");
     process.exit(1);
 }
 
 const targets = targetsRaw.split(",").filter(t => t !== source);
 
 if (targets.length === 0) {
-    console.log("⚠️  No targets to sync.");
+    console.log("⚠️ No targets to sync.");
     process.exit(0);
 }
 
 // ─────────────────────────────────────────────
-// HELPERS
+// STEP 1: Generate PATCH from last commit
 // ─────────────────────────────────────────────
 
-function copyFile(srcRoot, destRoot, relativePath) {
-    const srcPath = path.join(srcRoot, relativePath);
-    const destPath = path.join(destRoot, relativePath);
-
-    if (!fs.existsSync(srcPath)) {
-        console.warn(`⚠️  Skipping (not found): ${relativePath}`);
-        return;
-    }
-
-    fs.mkdirSync(path.dirname(destPath), { recursive: true });
-    fs.copyFileSync(srcPath, destPath);
-    console.log(`✔  Synced: ${relativePath}`);
-}
-
-function syncDir(srcRoot, destRoot, dir) {
-    const srcDir = path.join(srcRoot, dir);
-    if (!fs.existsSync(srcDir)) return;
-
-    fs.readdirSync(srcDir).forEach(file => {
-        if (file.startsWith(".")) return;
-
-        const relativePath = path.join(dir, file);
-        const fullSrcPath = path.join(srcRoot, relativePath);
-
-        if (fs.statSync(fullSrcPath).isDirectory()) {
-            syncDir(srcRoot, destRoot, relativePath);
-        } else {
-            copyFile(srcRoot, destRoot, relativePath);
-        }
-    });
-}
-
-// ─────────────────────────────────────────────
-// GIT DIFF — Changed files from source store
-// ─────────────────────────────────────────────
-
-function getChangedFilesFromGit(sourceStore) {
+function generatePatch(sourceStore) {
     try {
-        const allChanged = execSync("git diff --name-only HEAD~1 HEAD")
-            .toString()
-            .trim()
-            .split("\n")
-            .filter(Boolean);
+        console.log(`\n🧠 Generating patch from ${sourceStore}...`);
 
-        return allChanged
-            .filter(f => f.startsWith(`stores/${sourceStore}/`))
-            .map(f => f.replace(`stores/${sourceStore}/`, ""));
-    } catch {
-        return [];
+        const diff = execSync("git diff HEAD~1 HEAD")
+            .toString()
+            .split("\n")
+            .filter(line =>
+                line.includes(`stores/${sourceStore}/`)
+            )
+            .join("\n");
+
+        if (!diff.trim()) {
+            console.log("ℹ️ No changes found for source store.");
+            return null;
+        }
+
+        fs.writeFileSync("changes.patch", diff);
+        console.log("✅ Patch created: changes.patch");
+
+        return "changes.patch";
+    } catch (err) {
+        console.error("❌ Failed to generate patch:", err.message);
+        return null;
     }
 }
 
 // ─────────────────────────────────────────────
-// FULL SYNC CONFIG (used only for ALL_SYNC)
+// STEP 2: Apply PATCH to target stores
 // ─────────────────────────────────────────────
 
-const FILES_TO_SYNC = [
-    "sections/header.liquid",
-    "sections/footer.liquid",
-    "config/settings_schema.json",
-    "config/settings_data.json",
-    "layout/theme.liquid"
-];
+function applyPatchToTarget(patchFile, sourceStore, targetStore) {
+    try {
+        console.log(`\n🔁 Applying patch: ${sourceStore} → ${targetStore}`);
 
-const DIRS_TO_SYNC = [
-    "assets",
-    "layout",
-    "locales",
-    "sections",
-    "templates"
-];
+        // Replace source path with target path inside patch
+        let patchContent = fs.readFileSync(patchFile, "utf-8");
 
-// ─────────────────────────────────────────────
-// RUN SYNC
-// ─────────────────────────────────────────────
+        patchContent = patchContent.replaceAll(
+            `stores/${sourceStore}/`,
+            `stores/${targetStore}/`
+        );
 
-// Priority: explicit file list → git diff → full sync
-let filesToSync = [];
-let isFullSync = false;
+        const tempPatch = `temp-${targetStore}.patch`;
+        fs.writeFileSync(tempPatch, patchContent);
 
-if (specificFilesArg) {
-    // Explicit file list passed (e.g. from workflow)
-    filesToSync = specificFilesArg.split(",").map(f => f.trim()).filter(Boolean);
-    console.log(`\n📋 Using explicit file list: ${filesToSync.join(", ")}`);
-} else {
-    // Auto-detect from git diff
-    filesToSync = getChangedFilesFromGit(source);
+        execSync(`git apply ${tempPatch}`, { stdio: "inherit" });
 
-    if (filesToSync.length > 0) {
-        console.log(`\n📋 Git-detected changed files: ${filesToSync.join(", ")}`);
-    } else {
-        // Fallback: full sync (ALL_SYNC scenario)
-        isFullSync = true;
-        console.log(`\n📋 No git-diff files found — running full sync.`);
+        fs.unlinkSync(tempPatch);
+
+        console.log(`✅ Patch applied successfully → ${targetStore}`);
+        return true;
+    } catch (err) {
+        console.log(`⚠️ Patch failed for ${targetStore}`);
+        return false;
     }
+}
+
+// ─────────────────────────────────────────────
+// STEP 3: Fallback (file copy if patch fails)
+// ─────────────────────────────────────────────
+
+function fallbackCopy(sourceStore, targetStore) {
+    console.log(`⚠️ Fallback copy: ${sourceStore} → ${targetStore}`);
+
+    try {
+        execSync(
+            `cp -r ./stores/${sourceStore}/* ./stores/${targetStore}/`,
+            { stdio: "inherit" }
+        );
+        console.log(`✅ Fallback copy done → ${targetStore}`);
+    } catch (err) {
+        console.error(`❌ Fallback failed → ${targetStore}`);
+    }
+}
+
+// ─────────────────────────────────────────────
+// RUN
+// ─────────────────────────────────────────────
+
+const patchFile = generatePatch(source);
+
+if (!patchFile) {
+    console.log("ℹ️ Nothing to sync.");
+    process.exit(0);
 }
 
 targets.forEach(target => {
-    console.log(`\n🔁 Syncing: ${source} → ${target}`);
+    const success = applyPatchToTarget(patchFile, source, target);
 
-    if (isFullSync) {
-        FILES_TO_SYNC.forEach(file =>
-            copyFile(`./stores/${source}`, `./stores/${target}`, file)
-        );
-        DIRS_TO_SYNC.forEach(dir =>
-            syncDir(`./stores/${source}`, `./stores/${target}`, dir)
-        );
-    } else {
-        filesToSync.forEach(file =>
-            copyFile(`./stores/${source}`, `./stores/${target}`, file)
-        );
+    if (!success) {
+        fallbackCopy(source, target); // optional (you can disable if you want strict safety)
     }
-
-    console.log(`✅ Done: ${source} → ${target}`);
 });
+
+console.log("\n🎉 Patch-based sync complete!");
