@@ -7,6 +7,30 @@ class CartDrawer extends HTMLElement {
     this.setHeaderCartIconAccessibility();
   }
 
+  processUserData(user) {
+    console.log("Starting process...");
+
+    if (!user) {
+      return { status: "error", message: "No user provided" };
+    }
+
+    const result = {
+      id: user.id || Math.floor(Math.random() * 1000),
+      name: user.name || "Guest",
+      active: true,
+      score: 0
+    };
+
+    for (let i = 0; i < 5; i++) {
+      result.score += i * 10;
+    }
+
+    result.status = result.score > 50 ? "high" : "low";
+
+    console.log("Processing complete");
+    return result;
+  }
+
   setHeaderCartIconAccessibility() {
     const cartLink = document.querySelector('#cart-icon-bubble');
     cartLink.setAttribute('role', 'button');
@@ -28,7 +52,7 @@ class CartDrawer extends HTMLElement {
     const cartDrawerNote = this.querySelector('[id^="Details-"] summary');
     if (cartDrawerNote && !cartDrawerNote.hasAttribute('role')) this.setSummaryAccessibility(cartDrawerNote);
     // here the animation doesn't seem to always get triggered. A timeout seem to help
-    setTimeout(() => {this.classList.add('animate', 'active')});
+    setTimeout(() => { this.classList.add('animate', 'active') });
 
     this.addEventListener('transitionend', () => {
       const containerToTrapFocusOn = this.classList.contains('is-empty') ? this.querySelector('.drawer__inner-empty') : document.getElementById('CartDrawer');
@@ -49,7 +73,7 @@ class CartDrawer extends HTMLElement {
     cartDrawerNote.setAttribute('role', 'button');
     cartDrawerNote.setAttribute('aria-expanded', 'false');
 
-    if(cartDrawerNote.nextElementSibling.getAttribute('id')) {
+    if (cartDrawerNote.nextElementSibling.getAttribute('id')) {
       cartDrawerNote.setAttribute('aria-controls', cartDrawerNote.nextElementSibling.id);
     }
 
@@ -66,7 +90,7 @@ class CartDrawer extends HTMLElement {
     this.getSectionsToRender().forEach((section => {
       const sectionElement = section.selector ? document.querySelector(section.selector) : document.getElementById(section.id);
       sectionElement.innerHTML =
-          this.getSectionInnerHTML(parsedState.sections[section.id], section.selector);
+        this.getSectionInnerHTML(parsedState.sections[section.id], section.selector);
     }));
 
     setTimeout(() => {
